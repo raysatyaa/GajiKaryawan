@@ -11,8 +11,10 @@ let db={emp:[],tx:[],log:[],set:{company:'Nama Perusahaan Anda',es:0,ts:0}},peri
 /* ===== Penyimpanan IndexedDB ===== */
 const idb=new Promise((ok,no)=>{const r=indexedDB.open('payrollpro',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
 const load=async()=>{const d=await idb;return new Promise((ok,no)=>{const q=d.transaction('kv').objectStore('kv').get('db');q.onsuccess=()=>ok(q.result);q.onerror=()=>no(q.error)})};
-const ind=(g,m)=>{const e=$('#ind');e.className='ind'+(g?'':' bad');e.textContent=g?'● Tersimpan di browser ini':'● '+(m||'Gagal menyimpan')};
-async function save(){try{const d=await idb;await new Promise((ok,no)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(db,'db');t.oncomplete=ok;t.onerror=()=>no(t.error)});ind(true);return true}catch(e){ind(false);toast('Data gagal disimpan: '+e.message,1);return false}}
+const ind=(g,m)=>{const e=$('#ind');e.className='ind'+(g?'':' bad');e.textContent='● '+(g?(m||'Tersimpan di browser ini'):(m||'GAGAL menyimpan. Data akan hilang saat halaman ditutup'))};
+async function save(){let ok=0,m='';try{const d=await idb;await new Promise((r,n)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(db,'db');t.oncomplete=r;t.onerror=()=>n(t.error);t.onabort=()=>n(t.error)});ok=1}catch(e){m=e&&e.message||'IndexedDB tidak tersedia'}
+try{localStorage.setItem('payrollpro',JSON.stringify(db));ok=ok||2}catch(e){}
+if(ok){ind(true,ok===2?'Tersimpan (penyimpanan cadangan)':'');return true}ind(false,'GAGAL menyimpan ('+m+'). Jangan pakai mode incognito atau browser dalam aplikasi; buka lewat Chrome/Safari biasa.');toast('Data gagal disimpan. Lihat keterangan di kanan atas.',1);return false}
 async function commit(m){if(await save()){render();m&&toast(m)}}
 const lg=(type,desc,ref='')=>db.log.unshift({t:new Date().toISOString(),type,desc,ref});
 function toast(m,er){const d=document.createElement('div');d.textContent=m;if(er)d.className='er';$('#toast').append(d);setTimeout(()=>d.remove(),3500)}
@@ -101,4 +103,4 @@ if(e.target.id==='per'&&e.target.value){period=e.target.value;render()}
 if(e.target.id==='csv'&&f){const L=(await f.text()).replace(/^\ufeff/,'').split(/\r?\n/).filter(x=>x.trim());let n=0;L.forEach(l=>{const c=l.split(/[,;]/).map(s=>s.replace(/^"|"$/g,'').trim()),g=num(c[2]);if(c[0]&&g>0&&!/gaji/i.test(c[2])){db.emp.push({id:'K'+String(++db.set.es).padStart(3,'0'),nama:c[0],jabatan:c[1]||'',gaji:g,status:'aktif',catatan:''});n++}});lg('Impor CSV',n+' karyawan diimpor');commit(n+' karyawan diimpor')}
 if(e.target.id==='rf'&&f){try{const d=JSON.parse(await f.text());if(!Array.isArray(d.emp)||!Array.isArray(d.tx)||!d.set)throw 0;modal(`<h3>Pulihkan data?</h3><p>Data saat ini akan diganti oleh backup (${d.emp.length} karyawan, ${d.tx.length} transaksi).</p><div class="ft"><button class="btn ghost" data-a="close">Batal</button><button class="btn dg" id="rok">Pulihkan</button></div>`);$('#rok').onclick=()=>{db=d;db.log=db.log||[];lg('Pemulihan','Data dipulihkan dari backup');close();commit('Data dipulihkan')}}catch{toast('File backup tidak valid',1)}}
 if(f)e.target.value=''});
-(async()=>{try{const d=await load();if(d)db=d;ind(true)}catch(e){ind(false,'Penyimpanan browser tidak tersedia')}render()})();
+(async()=>{let d=null;try{d=await load()}catch(e){}if(!d){try{d=JSON.parse(localStorage.getItem('payrollpro')||'null')}catch(e){}}if(d&&d.emp)db=d;try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}render();await save()})();
